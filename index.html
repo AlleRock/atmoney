@@ -4,10 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>AleTaMoney</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js');
+      }
+    </script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/AlleRock/atmoney/main/icona.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
         .ios-blur { backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px); }
@@ -20,18 +29,20 @@
 
     <header class="sticky top-0 z-30 bg-white/80 ios-blur border-b border-slate-100 px-6 pt-14 pb-5 flex justify-between items-center">
         <h1 class="text-2xl font-black text-slate-800 tracking-tighter italic">AleTaMoney</h1>
-        <div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"></div>
+        <div class="flex items-center gap-2">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">Offline Pro</span>
+            <div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"></div>
+        </div>
     </header>
 
     <main id="page-home" class="p-6 space-y-6 max-w-md mx-auto">
-        
         <div class="grid grid-cols-2 gap-4">
             <section class="bg-white rounded-[2rem] p-5 card-shadow border border-slate-50 text-center">
-                <h2 class="text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1">👛 Vari</h2>
+                <h2 class="text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1 italic">👛 Vari</h2>
                 <div id="balance-vari" class="text-xl font-black text-slate-800">€ 0.00</div>
             </section>
             <section class="bg-white rounded-[2rem] p-5 card-shadow border border-slate-50 text-center">
-                <h2 class="text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1">✈️ Viaggi</h2>
+                <h2 class="text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1 italic">✈️ Viaggi</h2>
                 <div id="balance-viaggi" class="text-xl font-black text-slate-800">€ 0.00</div>
             </section>
         </div>
@@ -39,7 +50,6 @@
         <section class="bg-white rounded-3xl p-6 card-shadow border border-slate-50 space-y-4">
             <input id="edit-id" type="hidden">
             <input id="desc" type="text" placeholder="Chi o per cosa?" class="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 ring-blue-100 text-lg font-medium">
-            
             <div class="flex gap-3">
                 <input id="amount" type="number" step="0.01" placeholder="Importo €" class="w-2/3 p-4 bg-slate-50 rounded-2xl outline-none font-bold text-lg">
                 <input id="date" type="date" class="w-1/3 p-4 bg-slate-50 rounded-2xl outline-none text-[10px] font-bold text-slate-500">
@@ -55,7 +65,7 @@
                 <button id="btn-out" onclick="addEntry('out')" class="bg-blue-600 text-white font-extrabold py-5 rounded-2xl active:scale-95 shadow-xl shadow-blue-100">HO DATO</button>
                 <button id="btn-in" onclick="addEntry('in')" class="bg-orange-500 text-white font-extrabold py-5 rounded-2xl active:scale-95 shadow-xl shadow-orange-100">TORNATI</button>
             </div>
-            <button id="btn-cancel-edit" onclick="cancelEdit()" class="hidden w-full text-slate-400 text-xs font-bold py-2 uppercase text-center">Annulla Modifica</button>
+            <button id="btn-cancel-edit" onclick="cancelEdit()" class="hidden w-full text-slate-400 text-xs font-bold py-2 uppercase text-center italic">Annulla Modifica</button>
         </section>
     </main>
 
@@ -66,36 +76,38 @@
 
     <main id="page-settings" class="hidden p-6 max-w-md mx-auto space-y-6">
         <h2 class="text-3xl font-black text-slate-800 italic">Dati & Backup</h2>
-        <div class="bg-white rounded-3xl p-6 card-shadow border border-slate-50 space-y-6">
+        <div class="bg-white rounded-3xl p-6 card-shadow border border-slate-50 space-y-6 text-center">
             <div class="grid grid-cols-2 gap-3">
-                <button onclick="exportToJSON()" class="bg-slate-800 text-white text-[10px] font-bold py-4 rounded-xl uppercase tracking-widest">Salva Backup</button>
-                <label class="bg-blue-600 text-white text-[10px] font-bold py-4 rounded-xl uppercase tracking-widest text-center cursor-pointer">
-                    Carica Backup
+                <button onclick="exportToJSON()" class="bg-slate-800 text-white text-[10px] font-bold py-4 rounded-xl uppercase tracking-widest active:scale-95">Salva JSON</button>
+                <label class="bg-blue-600 text-white text-[10px] font-bold py-4 rounded-xl uppercase tracking-widest text-center cursor-pointer active:scale-95">
+                    Carica JSON
                     <input type="file" id="json-file" accept=".json" class="hidden" onchange="importFromJSON(event)">
                 </label>
             </div>
-            <button onclick="exportToCSV()" class="w-full bg-slate-100 text-slate-600 text-[10px] font-bold py-3 rounded-xl uppercase tracking-widest">Esporta Excel (CSV)</button>
-            <button onclick="clearAllData()" class="w-full bg-rose-50 text-rose-600 text-[10px] font-bold py-4 rounded-xl uppercase border border-rose-100">Svuota AleTaMoney</button>
+            <button onclick="exportToCSV()" class="w-full bg-slate-100 text-slate-600 text-[10px] font-bold py-3 rounded-xl uppercase tracking-widest">Esporta per Excel</button>
+            <div class="pt-4 border-t border-slate-100">
+                <button onclick="clearAllData()" class="w-full bg-rose-50 text-rose-600 text-[10px] font-bold py-4 rounded-xl uppercase border border-rose-100 active:bg-rose-600 active:text-white transition-all">Cancella Tutto</button>
+            </div>
         </div>
     </main>
 
     <nav class="fixed bottom-6 left-6 right-6 h-20 bg-white/90 ios-blur rounded-[2rem] card-shadow border border-white flex justify-around items-center px-4 z-40">
         <button onclick="showPage('home')" id="nav-home" class="flex flex-col items-center">
-            <svg class="w-6 h-6 mb-1" fill="currentColor" viewBox="0 0 20 20"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"></path></svg>
-            <span class="text-[10px] font-black uppercase">Home</span>
+            <svg class="w-6 h-6 mb-1 text-blue-600" fill="currentColor" viewBox="0 0 20 20"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"></path></svg>
+            <span class="text-[10px] font-black uppercase italic">Home</span>
         </button>
         <button onclick="showPage('history')" id="nav-history" class="flex flex-col items-center opacity-30">
             <svg class="w-6 h-6 mb-1" fill="currentColor" viewBox="0 0 20 20"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"></path></svg>
-            <span class="text-[10px] font-black uppercase">Lista</span>
+            <span class="text-[10px] font-black uppercase italic">Lista</span>
         </button>
         <button onclick="showPage('settings')" id="nav-settings" class="flex flex-col items-center opacity-30">
-            <svg class="w-6 h-6 mb-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"></path></svg>
-            <span class="text-[10px] font-black uppercase text-center">Dati</span>
+            <svg class="w-6 h-6 mb-1" fill="currentColor" viewBox="0 0 20 20"><path d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z"></path></svg>
+            <span class="text-[10px] font-black uppercase italic text-center">Dati</span>
         </button>
     </nav>
 
     <script>
-        let entries = JSON.parse(localStorage.getItem('aleta_v7_db')) || [];
+        let entries = JSON.parse(localStorage.getItem('aleta_v8_db')) || [];
 
         function setCat(cat) {
             document.getElementById('category').value = cat;
@@ -119,17 +131,12 @@
                 const index = entries.findIndex(e => e.id == editId);
                 entries[index] = data;
                 cancelEdit();
-            } else {
-                entries.unshift(data);
-            }
+            } else { entries.unshift(data); }
 
-            save();
-            updateUI();
-            resetForm();
-            showPage('history');
+            save(); updateUI(); resetForm(); showPage('history');
         }
 
-        function save() { localStorage.setItem('aleta_v7_db', JSON.stringify(entries)); }
+        function save() { localStorage.setItem('aleta_v8_db', JSON.stringify(entries)); }
 
         function updateUI() {
             const histEl = document.getElementById('history-list');
@@ -141,13 +148,13 @@
                 return `
                 <div class="bg-white p-5 rounded-[2rem] flex justify-between items-center card-shadow border border-slate-50">
                     <div class="flex-1">
-                        <div class="font-black text-slate-800 text-lg">${icon} ${e.desc}</div>
-                        <div class="text-[10px] font-bold text-slate-300 uppercase italic">${new Date(e.date).toLocaleDateString('it-IT', {day:'numeric', month:'short', year:'numeric'})}</div>
+                        <div class="font-black text-slate-800 text-lg leading-tight">${icon} ${e.desc}</div>
+                        <div class="text-[10px] font-bold text-slate-300 uppercase italic tracking-wider">${new Date(e.date).toLocaleDateString('it-IT', {day:'numeric', month:'short', year:'numeric'})}</div>
                     </div>
                     <div class="flex items-center gap-2">
                         <div class="font-black text-lg ${e.type === 'out' ? 'text-blue-500' : 'text-orange-500'}">${e.type === 'out' ? '+' : '-'}${Math.abs(e.amount).toFixed(2)}€</div>
-                        <button onclick="editEntry(${e.id})" class="p-2 text-slate-300"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" stroke-width="2.5"/></svg></button>
-                        <button onclick="deleteEntry(${e.id})" class="p-2 text-slate-200"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" stroke-width="2.5"/></svg></button>
+                        <button onclick="editEntry(${e.id})" class="p-2 text-slate-300 active:text-blue-500"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" stroke-width="2.5"/></svg></button>
+                        <button onclick="deleteEntry(${e.id})" class="p-2 text-slate-200 active:text-rose-500"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" stroke-width="2.5"/></svg></button>
                     </div>
                 </div>`;
             }).join('');
@@ -175,12 +182,12 @@
         
         function exportToJSON() { 
             const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' });
-            const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Backup.json`; a.click();
+            const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `AleTa_Backup_${new Date().toLocaleDateString()}.json`; a.click();
         }
 
         function importFromJSON(ev) {
             const fr = new FileReader();
-            fr.onload = (e) => { entries = JSON.parse(e.target.result); save(); updateUI(); alert("Importato!"); };
+            fr.onload = (e) => { try { entries = JSON.parse(e.target.result); save(); updateUI(); alert("Importato!"); } catch(e) { alert("File non valido"); } };
             fr.readAsText(ev.target.files[0]);
         }
 
