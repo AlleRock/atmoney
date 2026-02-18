@@ -30,7 +30,7 @@
     <header class="sticky top-0 z-30 bg-white/80 ios-blur border-b border-slate-100 px-6 pt-14 pb-5 flex justify-between items-center">
         <h1 class="text-2xl font-black text-slate-800 tracking-tighter italic">AleTaMoney</h1>
         <div class="flex items-center gap-2">
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">v8.1 Pro</span>
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">v8.2 Pro</span>
             <div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"></div>
         </div>
     </header>
@@ -38,7 +38,7 @@
     <main id="page-home" class="p-6 space-y-6 max-w-md mx-auto">
         <div class="grid grid-cols-2 gap-4">
             <section class="bg-white rounded-[2rem] p-5 card-shadow border border-slate-50 text-center">
-                <h2 class="text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1 italic">👛 Vari</h2>
+                <h2 class="text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1 italic">👛 Spese varie</h2>
                 <div id="balance-vari" class="text-xl font-black transition-colors duration-500">€ 0.00</div>
             </section>
             <section class="bg-white rounded-[2rem] p-5 card-shadow border border-slate-50 text-center">
@@ -56,8 +56,8 @@
             </div>
 
             <div class="bg-slate-100 p-1 rounded-2xl flex">
-                <button onclick="setCat('vari')" id="cat-vari" class="flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all tab-active">👛 Vari</button>
-                <button onclick="setCat('viaggi')" id="cat-viaggi" class="flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest text-slate-400 transition-all">✈️ Viaggi</button>
+                <button onclick="setCat('vari')" id="cat-vari" class="flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all tab-active">👛 Spese varie</button>
+                <button onclick="setCat('viaggi')" id="cat-viaggi" class="flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-400 transition-all">✈️ Viaggi</button>
             </div>
             <input type="hidden" id="category" value="vari">
 
@@ -111,8 +111,8 @@
 
         function setCat(cat) {
             document.getElementById('category').value = cat;
-            document.getElementById('cat-vari').className = `flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${cat === 'vari' ? 'tab-active' : 'text-slate-400'}`;
-            document.getElementById('cat-viaggi').className = `flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${cat === 'viaggi' ? 'tab-active' : 'text-slate-400'}`;
+            document.getElementById('cat-vari').className = `flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${cat === 'vari' ? 'tab-active' : 'text-slate-400'}`;
+            document.getElementById('cat-viaggi').className = `flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${cat === 'viaggi' ? 'tab-active' : 'text-slate-400'}`;
         }
 
         function addEntry(type) {
@@ -159,7 +159,6 @@
                 </div>`;
             }).join('');
 
-            // Gestione colori dinamici Home
             const elVari = document.getElementById('balance-vari');
             const elViaggi = document.getElementById('balance-viaggi');
 
@@ -194,7 +193,7 @@
 
         function importFromJSON(ev) {
             const fr = new FileReader();
-            fr.onload = (e) => { try { entries = JSON.parse(e.target.result); save(); updateUI(); alert("Dati importati con successo!"); } catch(e) { alert("File non valido"); } };
+            fr.onload = (e) => { try { entries = JSON.parse(e.target.result); save(); updateUI(); alert("Dati importati!"); } catch(e) { alert("File non valido"); } };
             fr.readAsText(ev.target.files[0]);
         }
 
@@ -202,7 +201,7 @@
             let csv = "Data;Descrizione;Categoria;Importo\n";
             entries.forEach(e => csv += `${e.date};${e.desc};${e.cat};${e.amount.toFixed(2)}\n`);
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `AleTaMoney_Report.csv`; a.click();
+            const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Report.csv`; a.click();
         }
 
         document.getElementById('date').valueAsDate = new Date();
