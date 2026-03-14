@@ -107,7 +107,32 @@
     </nav>
 
     <script>
-        let entries = JSON.parse(localStorage.getItem('aleta_v8_db')) || [];
+        const API = 'https://atmoney-api.m8online.workers.dev';
+        let entries = [];
+
+        async function loadData() {
+            try {
+                const res = await fetch(`${API}/data`);
+                const json = await res.json();
+                entries = json.entries || [];
+            } catch(e) {
+                // fallback localStorage
+                entries = JSON.parse(localStorage.getItem('aleta_v8_db')) || [];
+            }
+            updateUI();
+        }
+
+        async function save() {
+            try {
+                await fetch(`${API}/data`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ entries })
+                });
+            } catch(e) {
+                localStorage.setItem('aleta_v8_db', JSON.stringify(entries));
+            }
+        }
 
         function setCat(cat) {
             document.getElementById('category').value = cat;
@@ -136,7 +161,7 @@
             save(); updateUI(); resetForm(); showPage('history');
         }
 
-        function save() { localStorage.setItem('aleta_v8_db', JSON.stringify(entries)); }
+
 
         function updateUI() {
             const histEl = document.getElementById('history-list');
@@ -193,7 +218,7 @@
 
         function importFromJSON(ev) {
             const fr = new FileReader();
-            fr.onload = (e) => { try { entries = JSON.parse(e.target.result); save(); updateUI(); alert("Dati importati!"); } catch(e) { alert("File non valido"); } };
+            fr.onload = async (e) => { try { entries = JSON.parse(e.target.result); await save(); updateUI(); alert("Dati importati!"); } catch(e) { alert("File non valido"); } };
             fr.readAsText(ev.target.files[0]);
         }
 
@@ -205,7 +230,7 @@
         }
 
         document.getElementById('date').valueAsDate = new Date();
-        updateUI();
+        loadData();
     </script>
 </body>
 </html>
