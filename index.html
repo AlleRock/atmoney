@@ -110,18 +110,6 @@
         const API = 'https://atmoney-api.m8online.workers.dev';
         let entries = [];
 
-        async function loadData() {
-            try {
-                const res = await fetch(`${API}/data`);
-                const json = await res.json();
-                entries = json.entries || [];
-            } catch(e) {
-                // fallback localStorage
-                entries = JSON.parse(localStorage.getItem('aleta_v8_db')) || [];
-            }
-            updateUI();
-        }
-
         async function save() {
             try {
                 await fetch(`${API}/data`, {
@@ -129,9 +117,25 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ entries })
                 });
+                // Aggiorna anche localStorage come cache locale
+                localStorage.setItem('aleta_v8_db', JSON.stringify(entries));
             } catch(e) {
                 localStorage.setItem('aleta_v8_db', JSON.stringify(entries));
             }
+        }
+
+        async function loadData() {
+            try {
+                const res = await fetch(`${API}/data`);
+                const json = await res.json();
+                entries = json.entries || [];
+                // Aggiorna localStorage come cache
+                localStorage.setItem('aleta_v8_db', JSON.stringify(entries));
+            } catch(e) {
+                // fallback localStorage
+                entries = JSON.parse(localStorage.getItem('aleta_v8_db')) || [];
+            }
+            updateUI();
         }
 
         function setCat(cat) {
@@ -140,7 +144,7 @@
             document.getElementById('cat-viaggi').className = `flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${cat === 'viaggi' ? 'tab-active' : 'text-slate-400'}`;
         }
 
-        function addEntry(type) {
+        async function addEntry(type) {
             let desc = document.getElementById('desc').value;
             const amountVal = document.getElementById('amount').value;
             const date = document.getElementById('date').value;
@@ -150,15 +154,23 @@
             if (!amountVal || !date) return alert("Mancano dati!");
             const amount = Math.abs(parseFloat(amountVal));
             
+            // Ricarica dal Worker prima di modificare
+            try {
+                const res = await fetch(`${API}/data`);
+                const json = await res.json();
+                entries = json.entries || [];
+            } catch(e) {}
+
             const data = { id: editId || Date.now(), desc: desc || "Movimento", amount: type === 'out' ? amount : -amount, date, type, cat };
             
             if (editId) {
                 const index = entries.findIndex(e => e.id == editId);
-                entries[index] = data;
+                if (index >= 0) entries[index] = data;
+                else entries.unshift(data);
                 cancelEdit();
             } else { entries.unshift(data); }
 
-            save(); updateUI(); resetForm(); showPage('history');
+            await save(); updateUI(); resetForm(); showPage('history');
         }
 
 
@@ -207,8 +219,18 @@
 
         function cancelEdit() { resetForm(); document.getElementById('edit-id').value = ''; document.getElementById('btn-cancel-edit').classList.add('hidden'); }
         function resetForm() { document.getElementById('desc').value = ''; document.getElementById('amount').value = ''; document.getElementById('date').valueAsDate = new Date(); }
-        function deleteEntry(id) { if(confirm("Eliminare?")) { entries = entries.filter(e => e.id !== id); save(); updateUI(); } }
-        function clearAllData() { if(confirm("Svuotare tutto?")) { entries = []; save(); updateUI(); } }
+        async function deleteEntry(id) { 
+            if(confirm("Eliminare?")) { 
+                try { const res = await fetch(`${API}/data`); const json = await res.json(); entries = json.entries || []; } catch(e) {}
+                entries = entries.filter(e => e.id !== id); 
+                await save(); updateUI(); 
+            } 
+        }
+        async function clearAllData() { 
+            if(confirm("Svuotare tutto?")) { 
+                entries = []; await save(); updateUI(); 
+            } 
+        }
         function showPage(p) { ['home', 'history', 'settings'].forEach(x => { document.getElementById('page-'+x).classList.toggle('hidden', x!==p); document.getElementById('nav-'+x).style.opacity = x===p?"1":"0.3"; }); }
         
         function exportToJSON() { 
