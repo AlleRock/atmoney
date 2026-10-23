@@ -34,6 +34,7 @@
             <div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"></div>
         </div>
     </header>
+    <div id="sync-status" role="status" class="hidden mx-6 mt-3 text-xs text-rose-600" aria-live="polite"></div>
 
     <main id="page-home" class="p-6 space-y-6 max-w-md mx-auto">
         <div class="grid grid-cols-2 gap-4">
@@ -108,34 +109,167 @@
 
     <script>
         const API = 'https://atmoney-api.m8online.workers.dev';
+        const DB_KEY = 'aleta_v8_db', SYNC_KEY = 'aleta_v8_sync';
         let entries = [];
+        let storedRaw = null, storedSync = null, pending = false, blocked = false, busy = false;
+        const LOCAL_ONLY = 'Movimenti salvati solo su questo dispositivo. Sincronizzazione non riuscita o non confermata: nessun reinvio automatico. Conserva un backup JSON prima di usare altri dispositivi.';
 
-        async function save() {
-            try {
-                await fetch(`${API}/data`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ entries })
-                });
-                // Aggiorna anche localStorage come cache locale
-                localStorage.setItem('aleta_v8_db', JSON.stringify(entries));
-            } catch(e) {
-                localStorage.setItem('aleta_v8_db', JSON.stringify(entries));
+        function syncStatus(message) {
+            const el = document.getElementById('sync-status');
+            el.textContent = message;
+            el.classList.toggle('hidden', !message);
+        }
+
+        function validateEntries(value) {
+            if (!Array.isArray(value)) throw new Error('Il backup deve contenere un elenco di movimenti.');
+            const ids = new Set();
+            for (const e of value) {
+                if (!e || typeof e !== 'object' || Array.isArray(e)) throw new Error('Movimento non valido.');
+                const id = typeof e.id === 'number' ? e.id : typeof e.id === 'string' && /^\d+$/.test(e.id) ? Number(e.id) : NaN;
+                const date = typeof e.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.date) ? new Date(e.date + 'T00:00:00Z') : new Date(NaN);
+                if (!Number.isSafeInteger(id) || id < 0 || ids.has(id) ||
+                    typeof e.desc !== 'string' || typeof e.amount !== 'number' || !Number.isFinite(e.amount) ||
+                    !['out', 'in'].includes(e.type) || (e.type === 'out' ? e.amount < 0 : e.amount > 0) ||
+                    (e.cat !== undefined && !['vari', 'viaggi'].includes(e.cat)) ||
+                    !Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== e.date) {
+                    throw new Error('Movimento con identificativo, importo, data, tipo o categoria non validi.');
+                }
+                ids.add(id);
             }
+            return value; // Nessuna conversione o rimozione di campi dei backup esistenti.
+        }
+
+        function sameEntries(a, b) {
+            const canonical = value => JSON.stringify(value, (key, item) => item && typeof item === 'object' && !Array.isArray(item)
+                ? Object.keys(item).sort().reduce((obj, name) => { obj[name] = item[name]; return obj; }, Object.create(null)) : item);
+            return canonical(a) === canonical(b);
+        }
+
+        function storageUnchanged() {
+            if (blocked) return false;
+            try {
+                if (localStorage.getItem(DB_KEY) === storedRaw && localStorage.getItem(SYNC_KEY) === storedSync) return true;
+            } catch(e) {}
+            blocked = true;
+            syncStatus('Archivio locale non accessibile o cambiato in un’altra finestra. Nessun dato sovrascritto: ricarica prima di modificare.');
+            return false;
+        }
+
+        async function requestData(method = 'GET', data) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 8000);
+            try {
+                const res = await fetch(`${API}/data`, {
+                    method, cache: 'no-store', signal: controller.signal,
+                    ...(method === 'POST' ? {headers: {'Content-Type': 'application/json'}, body: JSON.stringify({entries: data})} : {})
+                });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                if (method === 'POST') { await res.text(); return; }
+                const json = await res.json();
+                return validateEntries(json.entries);
+            } finally { clearTimeout(timeout); }
+        }
+
+        function markPending() {
+            const meta = JSON.stringify({pending: true});
+            localStorage.setItem(SYNC_KEY, meta);
+            storedSync = meta;
+            pending = true;
+        }
+
+        function markConfirmed() {
+            const meta = JSON.stringify({pending: false, snapshot: storedRaw});
+            localStorage.setItem(SYNC_KEY, meta);
+            storedSync = meta;
+            pending = false;
+            syncStatus('');
+        }
+
+        async function save(nextEntries = entries, canSync = false) {
+            if (!storageUnchanged()) return false;
+            try {
+                const raw = JSON.stringify(validateEntries(nextEntries));
+                markPending(); // Prima del dato: anche un'interruzione lascia la copia locale protetta.
+                localStorage.setItem(DB_KEY, raw);
+                storedRaw = raw;
+                entries = nextEntries;
+            } catch(e) {
+                syncStatus('Salvataggio locale non riuscito. I movimenti precedenti sono conservati; la modifica non è stata inviata.');
+                alert('Salvataggio locale non riuscito. Controlla lo spazio disponibile e conserva un backup JSON.');
+                return false;
+            }
+            if (canSync) {
+                try {
+                    await requestData('POST', nextEntries);
+                    const confirmed = await requestData();
+                    if (!sameEntries(confirmed, nextEntries) || !storageUnchanged()) throw new Error('Conferma remota mancante');
+                    markConfirmed();
+                } catch(e) { if (!blocked) syncStatus(LOCAL_ONLY); }
+            } else { syncStatus(LOCAL_ONLY); }
+            return true;
+        }
+
+        async function refreshForChange() {
+            if (pending) return {data: entries, canSync: false};
+            try {
+                const remote = await requestData();
+                if (!storageUnchanged()) return null;
+                // Una vecchia cache senza conferma potrebbe contenere modifiche offline.
+                if (storedRaw !== null && !storedSync && !sameEntries(remote, entries)) {
+                    markPending();
+                    syncStatus(LOCAL_ONLY);
+                    return {data: entries, canSync: false};
+                }
+                return {data: remote, canSync: true};
+            } catch(e) { return {data: entries, canSync: false}; }
+        }
+
+        async function changeEntries(makeNext) {
+            if (busy) { syncStatus('Operazione in corso. Attendi il completamento e riprova.'); return false; }
+            if (!storageUnchanged()) return false;
+            busy = true;
+            try {
+                const base = await refreshForChange();
+                return base ? await save(makeNext(base.data), base.canSync) : false;
+            } finally { busy = false; updateUI(); }
         }
 
         async function loadData() {
+            if (busy) return;
+            busy = true;
             try {
-                const res = await fetch(`${API}/data`);
-                const json = await res.json();
-                entries = json.entries || [];
-                // Aggiorna localStorage come cache
-                localStorage.setItem('aleta_v8_db', JSON.stringify(entries));
+                storedRaw = localStorage.getItem(DB_KEY);
+                storedSync = localStorage.getItem(SYNC_KEY);
+                entries = storedRaw === null ? [] : validateEntries(JSON.parse(storedRaw));
+                const meta = storedSync === null ? null : JSON.parse(storedSync);
+                if (storedSync !== null && (!meta || typeof meta.pending !== 'boolean' || (meta.pending === false && typeof meta.snapshot !== 'string'))) throw new Error('Stato locale non valido');
+                pending = meta !== null && (meta.pending !== false || meta.snapshot !== storedRaw);
             } catch(e) {
-                // fallback localStorage
-                entries = JSON.parse(localStorage.getItem('aleta_v8_db')) || [];
+                blocked = true;
+                syncStatus('Archivio locale non leggibile: originale conservato. Nessun caricamento o salvataggio remoto eseguito. Usa Salva JSON per conservarne una copia.');
             }
             updateUI();
+            try {
+                if (blocked) return;
+                if (pending) { syncStatus(LOCAL_ONLY); return; }
+                const base = await refreshForChange();
+                if (!base || !storageUnchanged()) return;
+                if (!base.canSync) { syncStatus(pending ? LOCAL_ONLY : 'Caricamento remoto non riuscito. La copia locale è conservata.'); return; }
+                const raw = JSON.stringify(base.data);
+                if (storedRaw === null || !sameEntries(entries, base.data)) {
+                    localStorage.setItem(DB_KEY, raw);
+                    storedRaw = raw;
+                    entries = base.data;
+                }
+                markConfirmed();
+            } catch(e) {
+                syncStatus('Impossibile aggiornare la copia locale. Conserva un backup JSON prima di modificare i dati.');
+            } finally { busy = false; updateUI(); }
+        }
+
+        function setToday() {
+            const today = new Date();
+            document.getElementById('date').value = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
         }
 
         function setCat(cat) {
@@ -151,26 +285,17 @@
             const editId = document.getElementById('edit-id').value;
             const cat = document.getElementById('category').value;
 
-            if (!amountVal || !date) return alert("Mancano dati!");
+            if (!amountVal || !date || !Number.isFinite(Number(amountVal))) return alert("Mancano dati!");
             const amount = Math.abs(parseFloat(amountVal));
-            
-            // Ricarica dal Worker prima di modificare
-            try {
-                const res = await fetch(`${API}/data`);
-                const json = await res.json();
-                entries = json.entries || [];
-            } catch(e) {}
-
-            const data = { id: editId || Date.now(), desc: desc || "Movimento", amount: type === 'out' ? amount : -amount, date, type, cat };
-            
-            if (editId) {
-                const index = entries.findIndex(e => e.id == editId);
-                if (index >= 0) entries[index] = data;
-                else entries.unshift(data);
-                cancelEdit();
-            } else { entries.unshift(data); }
-
-            await save(); updateUI(); resetForm(); showPage('history');
+            const saved = await changeEntries(base => {
+                const next = base.slice();
+                const data = { id: editId || Date.now(), desc: desc || "Movimento", amount: type === 'out' ? amount : -amount, date, type, cat };
+                if (!editId) while (next.some(e => e.id == data.id)) data.id++;
+                const index = editId ? next.findIndex(e => e.id == editId) : -1;
+                if (index >= 0) next[index] = data; else next.unshift(data);
+                return next;
+            });
+            if (saved) { cancelEdit(); showPage('history'); }
         }
 
 
@@ -179,22 +304,36 @@
             const histEl = document.getElementById('history-list');
             let tVari = 0, tViaggi = 0;
 
-            histEl.innerHTML = entries.map(e => {
+            const fragment = document.createDocumentFragment();
+            entries.forEach(e => {
                 if (e.cat === 'viaggi') tViaggi += e.amount; else tVari += e.amount;
                 const icon = e.cat === 'viaggi' ? '✈️' : '👛';
-                return `
-                <div class="bg-white p-5 rounded-[2rem] flex justify-between items-center card-shadow border border-slate-50">
+                const card = document.createElement('div');
+                card.className = 'bg-white p-5 rounded-[2rem] flex justify-between items-center card-shadow border border-slate-50';
+                // Solo struttura costante: tutti i valori dei movimenti passano da textContent.
+                card.innerHTML = `
                     <div class="flex-1">
-                        <div class="font-black text-slate-800 text-lg leading-tight">${icon} ${e.desc}</div>
-                        <div class="text-[10px] font-bold text-slate-300 uppercase italic tracking-wider">${new Date(e.date).toLocaleDateString('it-IT', {day:'numeric', month:'short', year:'numeric'})}</div>
+                        <div class="font-black text-slate-800 text-lg leading-tight"></div>
+                        <div class="text-[10px] font-bold text-slate-300 uppercase italic tracking-wider"></div>
                     </div>
                     <div class="flex items-center gap-2">
-                        <div class="font-black text-lg ${e.type === 'out' ? 'text-blue-500' : 'text-orange-500'}">${e.type === 'out' ? '+' : '-'}${Math.abs(e.amount).toFixed(2)}€</div>
-                        <button onclick="editEntry(${e.id})" class="p-2 text-slate-300 active:text-blue-500"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" stroke-width="2.5"/></svg></button>
-                        <button onclick="deleteEntry(${e.id})" class="p-2 text-slate-200 active:text-rose-500"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" stroke-width="2.5"/></svg></button>
+                        <div class="font-black text-lg"></div>
+                        <button class="p-2 text-slate-300 active:text-blue-500"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" stroke-width="2.5"/></svg></button>
+                        <button class="p-2 text-slate-200 active:text-rose-500"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" stroke-width="2.5"/></svg></button>
                     </div>
-                </div>`;
-            }).join('');
+                `;
+                card.children[0].children[0].textContent = icon + ' ' + e.desc;
+                card.children[0].children[1].textContent = new Date(e.date).toLocaleDateString('it-IT', {day:'numeric', month:'short', year:'numeric'});
+                const amountEl = card.children[1].children[0];
+                amountEl.classList.add(e.type === 'out' ? 'text-blue-500' : 'text-orange-500');
+                amountEl.textContent = (e.type === 'out' ? '+' : '-') + Math.abs(e.amount).toFixed(2) + '€';
+                const buttons = card.querySelectorAll('button');
+                buttons[0].addEventListener('click', () => editEntry(e.id));
+                buttons[1].addEventListener('click', () => deleteEntry(e.id));
+                fragment.appendChild(card);
+            });
+            histEl.textContent = '';
+            histEl.appendChild(fragment);
 
             const elVari = document.getElementById('balance-vari');
             const elViaggi = document.getElementById('balance-viaggi');
@@ -218,40 +357,55 @@
         }
 
         function cancelEdit() { resetForm(); document.getElementById('edit-id').value = ''; document.getElementById('btn-cancel-edit').classList.add('hidden'); }
-        function resetForm() { document.getElementById('desc').value = ''; document.getElementById('amount').value = ''; document.getElementById('date').valueAsDate = new Date(); }
+        function resetForm() { document.getElementById('desc').value = ''; document.getElementById('amount').value = ''; setToday(); }
         async function deleteEntry(id) { 
             if(confirm("Eliminare?")) { 
-                try { const res = await fetch(`${API}/data`); const json = await res.json(); entries = json.entries || []; } catch(e) {}
-                entries = entries.filter(e => e.id !== id); 
-                await save(); updateUI(); 
+                await changeEntries(base => base.filter(e => e.id !== id));
             } 
         }
         async function clearAllData() { 
             if(confirm("Svuotare tutto?")) { 
-                entries = []; await save(); updateUI(); 
+                await changeEntries(() => []);
             } 
         }
         function showPage(p) { ['home', 'history', 'settings'].forEach(x => { document.getElementById('page-'+x).classList.toggle('hidden', x!==p); document.getElementById('nav-'+x).style.opacity = x===p?"1":"0.3"; }); }
         
         function exportToJSON() { 
-            const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' });
+            if (blocked && storedRaw === null) return alert('Impossibile leggere l’archivio locale: nessun backup esportato.');
+            const blob = new Blob([blocked && storedRaw !== null ? storedRaw : JSON.stringify(entries, null, 2)], { type: 'application/json' });
             const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `AleTa_Backup_${new Date().toLocaleDateString('it-IT').replace(/\//g, '-')}.json`; a.click();
         }
 
         function importFromJSON(ev) {
+            const file = ev.target.files[0];
+            if (!file) return;
             const fr = new FileReader();
-            fr.onload = async (e) => { try { entries = JSON.parse(e.target.result); await save(); updateUI(); alert("Dati importati!"); } catch(e) { alert("File non valido"); } };
-            fr.readAsText(ev.target.files[0]);
+            fr.onload = async (e) => {
+                try {
+                    const imported = validateEntries(JSON.parse(e.target.result));
+                    if (!confirm('Sostituire tutti i movimenti esistenti con quelli del backup?')) return;
+                    if (await changeEntries(() => imported)) alert(pending ? 'Dati importati sul dispositivo. Sincronizzazione non riuscita o non confermata.' : 'Dati importati!');
+                } catch(e) { alert('File non valido: ' + e.message); }
+                finally { ev.target.value = ''; }
+            };
+            fr.onerror = () => { alert('Impossibile leggere il file. Archivio non modificato.'); ev.target.value = ''; };
+            fr.readAsText(file);
+        }
+
+        function csvCell(value, text = true) {
+            let cell = String(value);
+            if (text && (/^[\s\u0000-\u001f]*[=+\-@＝＋－＠]/.test(cell) || /^[\t\r\n]/.test(cell))) cell = '\t' + cell;
+            return '"' + cell.replace(/"/g, '""') + '"';
         }
 
         function exportToCSV() {
-            let csv = "Data;Descrizione;Categoria;Importo\n";
-            entries.forEach(e => csv += `${e.date};${e.desc};${e.cat};${e.amount.toFixed(2)}\n`);
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            let csv = "Data;Descrizione;Categoria;Importo\r\n";
+            entries.forEach(e => csv += [csvCell(e.date), csvCell(e.desc), csvCell(e.cat === undefined ? '' : e.cat), csvCell(e.amount.toFixed(2), false)].join(';') + '\r\n');
+            const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8;' });
             const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Report.csv`; a.click();
         }
 
-        document.getElementById('date').valueAsDate = new Date();
+        setToday();
         loadData();
     </script>
 </body>
